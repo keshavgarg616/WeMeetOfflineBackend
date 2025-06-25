@@ -12,9 +12,7 @@ dotenv.config();
 const port = 3000;
 const mongoURL = `mongodb+srv://${process.env.MongoDBUsername}:${process.env.MongoDBPswd}@${process.env.MongoDBClusterString}.mongodb.net/we-meet-offline?retryWrites=true&w=majority&appName=Cluster0`;
 
-app.use(
-	cors({ origin: "https://wemeetofflinebackend-production.up.railway.app" })
-);
+app.use(cors({ origin: "https://wemeetoffline.web.app" }));
 app.use(express.json());
 app.use(expressUploader());
 mongoose
