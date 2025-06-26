@@ -59,11 +59,11 @@ export const getEvents = async (req, res) => {
 };
 
 export const deleteEvent = async (req, res) => {
-	const { eventId } = req.params;
+	const { title } = req.body;
 	const userId = req.userId;
 
 	try {
-		const event = await Event.findById(eventId);
+		const event = await Event.findOne({ title });
 		if (!event) {
 			return res.status(404).json({ error: "Event not found" });
 		}
@@ -72,7 +72,7 @@ export const deleteEvent = async (req, res) => {
 			return res.status(403).json({ error: "Unauthorized action" });
 		}
 
-		await Event.findByIdAndDelete(eventId);
+		await Event.findByIdAndDelete(event._id);
 		res.status(200).json({ message: "Event deleted successfully" });
 	} catch (error) {
 		console.error("Error deleting event:", error);
@@ -98,12 +98,12 @@ export const getEventByTitle = async (req, res) => {
 	}
 };
 export const updateEvent = async (req, res) => {
-	const eventId = req.body.eventId;
+	const title = req.body.title;
 	const userId = req.userId;
 	const updateData = req.body;
 
 	try {
-		const event = await Event.findById(eventId);
+		const event = await Event.findOne({ title });
 		if (!event) {
 			return res.status(404).json({ error: "Event not found" });
 		}
@@ -122,7 +122,7 @@ export const updateEvent = async (req, res) => {
 		}
 		// Update the event
 		const updatedEvent = await Event.findByIdAndUpdate(
-			eventId,
+			event._id,
 			{ ...updateData, organizerId: userId },
 			{ new: true, runValidators: true }
 		);
