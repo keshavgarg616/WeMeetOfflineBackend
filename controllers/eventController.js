@@ -150,7 +150,7 @@ export const registerForEvent = async (req, res) => {
 				.status(400)
 				.json({ error: "Already registered for this event" });
 		}
-		event.attendeeIds.push(userId);
+		event.requestedAttendeeIds.push(userId);
 		await event.save();
 		res.status(200).json({
 			message: "Registered for event successfully",
@@ -172,9 +172,20 @@ export const unregisterFromEvent = async (req, res) => {
 			return res.status(404).json({ error: "Event not found" });
 		}
 		if (!event.attendeeIds.includes(userId)) {
-			return res
-				.status(400)
-				.json({ error: "Not registered for this event" });
+			if (event.requestedAttendeeIds.includes(userId)) {
+				event.requestedAttendeeIds = event.requestedAttendeeIds.filter(
+					(id) => id.toString() !== userId
+				);
+				await event.save();
+				return res.status(200).json({
+					message: "Deregistration request cancelled successfully",
+					event,
+				});
+			} else {
+				return res
+					.status(400)
+					.json({ error: "Not registered for this event" });
+			}
 		}
 		event.attendeeIds = event.attendeeIds.filter(
 			(id) => id.toString() !== userId
@@ -207,6 +218,23 @@ export const isRegisteredForEvent = async (req, res) => {
 	}
 };
 
+export const hasRequestedToAttendEvent = async (req, res) => {
+	const { title } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const hasRequested = event.requestedAttendeeIds.includes(userId);
+		res.status(200).json({ hasRequested });
+	} catch (error) {
+		console.error("Error checking request status:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
 export const isOrganizerOfEvent = async (req, res) => {
 	const { title } = req.body;
 	const userId = req.userId;
@@ -229,28 +257,103 @@ export const getAddressAndAttendees = async (req, res) => {
 	const userId = req.userId;
 
 	try {
-		const event = await Event.findOne({ title }).populate(
-			"attendeeIds",
-			"name pfp"
-		);
+		const event = await Event.findOne({ title })
+			.populate("attendeeIds", "name pfp")
+			.populate("requestedAttendeeIds", "name pfp");
 		if (!event) {
 			return res.status(404).json({ error: "Event not found" });
 		}
+		if (event.organizerId.toString() === userId) {
+			return res.status(200).json({
+				address: event.address,
+				attendees: event.attendeeIds,
+				requestedAttendees: event.requestedAttendeeIds,
+			});
+		}
 		if (
-			event.organizerId.toString() === userId ||
-			event.attendeeIds.some((id) => id._id.toString() === userId)
+			event.attendeeIds.some(
+				(attendee) => attendee._id.toString() === userId
+			)
 		) {
 			return res.status(200).json({
 				address: event.address,
-				attendees: event.attendeeIds.map(({ name, pfp }) => ({
-					name,
-					pfp,
-				})),
+				attendees: event.attendeeIds,
 			});
 		}
 		return res.status(403).json({ error: "Unauthorized action" });
 	} catch (error) {
 		console.error("Error fetching address and attendees:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const approveAttendee = async (req, res) => {
+	const { title, attendeeId } = req.body;
+	const organizerId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		if (event.organizerId.toString() !== organizerId) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		if (!event.requestedAttendeeIds.includes(attendeeId)) {
+			return res
+				.status(400)
+				.json({ error: "Attendee has not requested to join" });
+		}
+		event.requestedAttendeeIds = event.requestedAttendeeIds.filter(
+			(id) => id.toString() !== attendeeId
+		);
+		event.attendeeIds.push(attendeeId);
+		await event.save();
+		const populatedEvent = event.populate("attendeeIds", "name pfp");
+		res.status(200).json({
+			message: "Attendee approved successfully",
+			populatedEvent,
+		});
+	} catch (error) {
+		console.error("Error approving attendee:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const removeAttendee = async (req, res) => {
+	const { title, attendeeId } = req.body;
+	const organizerId = req.userId;
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		if (event.organizerId.toString() !== organizerId) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		if (!event.attendeeIds.includes(attendeeId)) {
+			if (event.requestedAttendeeIds.includes(attendeeId)) {
+				event.requestedAttendeeIds = event.requestedAttendeeIds.filter(
+					(id) => id.toString() !== attendeeId
+				);
+				await event.save();
+				return res.status(200).json({
+					message: "Attendee rejected successfully",
+					event,
+				});
+			}
+			return res.status(400).json({ error: "Attendee not registered" });
+		}
+		event.attendeeIds = event.attendeeIds.filter(
+			(id) => id.toString() !== attendeeId
+		);
+		await event.save();
+		res.status(200).json({
+			message: "Attendee removed successfully",
+			event,
+		});
+	} catch (error) {
+		console.error("Error removing attendee:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };

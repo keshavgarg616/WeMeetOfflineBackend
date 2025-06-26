@@ -43,6 +43,12 @@ const eventSchema = new mongoose.Schema({
 			ref: "User",
 		},
 	],
+	requestedAttendeeIds: [
+		{
+			type: mongoose.Schema.Types.ObjectId,
+			ref: "User",
+		},
+	],
 	picture: {
 		type: String,
 		default: "https://example.com/default-event-pic.png",
