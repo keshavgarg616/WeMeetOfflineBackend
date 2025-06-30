@@ -13,6 +13,14 @@ import {
 	approveAttendee,
 	removeAttendee,
 	hasRequestedToAttendEvent,
+	addComment,
+	addReply,
+	getComments,
+	getUserId,
+	deleteComment,
+	deleteReply,
+	editComment,
+	editReply,
 } from "../controllers/eventController.js";
 import verifyToken from "../middleware.js";
 
@@ -39,5 +47,13 @@ eventRouter.post(
 );
 eventRouter.post("/approve-attendee", verifyToken, approveAttendee);
 eventRouter.post("/remove-attendee", verifyToken, removeAttendee);
+eventRouter.post("/add-comment", verifyToken, addComment);
+eventRouter.post("/add-reply", verifyToken, addReply);
+eventRouter.post("/get-comments", verifyToken, getComments);
+eventRouter.post("/get-userid", verifyToken, getUserId);
+eventRouter.post("/delete-comment", verifyToken, deleteComment);
+eventRouter.post("/delete-reply", verifyToken, deleteReply);
+eventRouter.post("/edit-comment", verifyToken, editComment);
+eventRouter.post("/edit-reply", verifyToken, editReply);
 
 export default eventRouter;

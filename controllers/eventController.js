@@ -128,7 +128,6 @@ export const updateEvent = async (req, res) => {
 		);
 		res.status(200).json({
 			message: "Event updated successfully",
-			event: updatedEvent,
 		});
 	} catch (error) {
 		console.error("Error updating event:", error);
@@ -154,7 +153,6 @@ export const registerForEvent = async (req, res) => {
 		await event.save();
 		res.status(200).json({
 			message: "Registered for event successfully",
-			event,
 		});
 	} catch (error) {
 		console.error("Error registering for event:", error);
@@ -179,7 +177,6 @@ export const unregisterFromEvent = async (req, res) => {
 				await event.save();
 				return res.status(200).json({
 					message: "Deregistration request cancelled successfully",
-					event,
 				});
 			} else {
 				return res
@@ -193,7 +190,6 @@ export const unregisterFromEvent = async (req, res) => {
 		await event.save();
 		res.status(200).json({
 			message: "Unregistered from event successfully",
-			event,
 		});
 	} catch (error) {
 		console.error("Error unregistering from event:", error);
@@ -309,10 +305,8 @@ export const approveAttendee = async (req, res) => {
 		);
 		event.attendeeIds.push(attendeeId);
 		await event.save();
-		const populatedEvent = event.populate("attendeeIds", "name pfp");
 		res.status(200).json({
 			message: "Attendee approved successfully",
-			populatedEvent,
 		});
 	} catch (error) {
 		console.error("Error approving attendee:", error);
@@ -339,7 +333,6 @@ export const removeAttendee = async (req, res) => {
 				await event.save();
 				return res.status(200).json({
 					message: "Attendee rejected successfully",
-					event,
 				});
 			}
 			return res.status(400).json({ error: "Attendee not registered" });
@@ -350,10 +343,266 @@ export const removeAttendee = async (req, res) => {
 		await event.save();
 		res.status(200).json({
 			message: "Attendee removed successfully",
-			event,
 		});
 	} catch (error) {
 		console.error("Error removing attendee:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const addComment = async (req, res) => {
+	const { title, comment } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		if (
+			!event.attendeeIds.includes(userId) &&
+			event.organizerId.toString() !== userId
+		) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		const newComment = {
+			user: userId,
+			text: comment,
+			replies: [],
+		};
+		event.comments.push(newComment);
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Comment added successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error adding comment:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const addReply = async (req, res) => {
+	const { title, commentId, reply } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const comment = event.comments.id(commentId);
+		if (!comment) {
+			return res.status(404).json({ error: "Comment not found" });
+		}
+		if (
+			!event.attendeeIds.includes(userId) &&
+			event.organizerId.toString() !== userId
+		) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		const newReply = {
+			user: userId,
+			text: reply,
+		};
+		comment.replies.push(newReply);
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Reply added successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error adding reply:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const getComments = async (req, res) => {
+	const { title } = req.body;
+
+	try {
+		const event = await Event.findOne({ title })
+			.populate("comments.user", "name pfp")
+			.populate("comments.replies.user", "name pfp");
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		res.status(200).json(event.comments);
+	} catch (error) {
+		console.error("Error fetching comments:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const getUserId = async (req, res) => {
+	try {
+		const userId = req.userId;
+		if (!userId) {
+			return res.status(401).json({ error: "Unauthorized" });
+		}
+		res.status(200).json({ userId });
+	} catch (error) {
+		console.error("Error fetching user ID:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const deleteComment = async (req, res) => {
+	const { title, commentId } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const comment = event.comments.id(commentId);
+		if (!comment) {
+			return res.status(404).json({ error: "Comment not found" });
+		}
+		if (
+			comment.user.toString() !== userId &&
+			event.organizerId.toString() !== userId
+		) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		event.comments = event.comments.filter(
+			(c) => c._id.toString() !== commentId
+		);
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Comment deleted successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error deleting comment:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const deleteReply = async (req, res) => {
+	const { title, commentId, replyId } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const comment = event.comments.id(commentId);
+		if (!comment) {
+			return res.status(404).json({ error: "Comment not found" });
+		}
+		const reply = comment.replies.id(replyId);
+		if (!reply) {
+			return res.status(404).json({ error: "Reply not found" });
+		}
+		if (
+			reply.user.toString() !== userId &&
+			event.organizerId.toString() !== userId
+		) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		event.comments.id(commentId).replies = comment.replies.filter(
+			(r) => r._id.toString() !== replyId
+		);
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Reply deleted successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error deleting reply:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const editComment = async (req, res) => {
+	const { title, commentId, newText } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const comment = event.comments.id(commentId);
+		if (!comment) {
+			return res.status(404).json({ error: "Comment not found" });
+		}
+		if (comment.user.toString() !== userId) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		comment.text = newText;
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Comment edited successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error editing comment:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const editReply = async (req, res) => {
+	const { title, commentId, replyId, newText } = req.body;
+	const userId = req.userId;
+
+	try {
+		const event = await Event.findOne({ title });
+		if (!event) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+		const comment = event.comments.id(commentId);
+		if (!comment) {
+			return res.status(404).json({ error: "Comment not found" });
+		}
+		const reply = comment.replies.id(replyId);
+		if (!reply) {
+			return res.status(404).json({ error: "Reply not found" });
+		}
+		if (reply.user.toString() !== userId) {
+			return res.status(403).json({ error: "Unauthorized action" });
+		}
+		reply.text = newText;
+		await event.save();
+		const populatedEvent = await Event.findById(event._id).populate([
+			{ path: "comments.user", select: "name pfp" },
+			{ path: "comments.replies.user", select: "name pfp" },
+		]);
+
+		res.status(200).json({
+			message: "Reply edited successfully",
+			comments: populatedEvent.comments,
+		});
+	} catch (error) {
+		console.error("Error editing reply:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };

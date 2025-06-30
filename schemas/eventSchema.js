@@ -49,6 +49,32 @@ const eventSchema = new mongoose.Schema({
 			ref: "User",
 		},
 	],
+	comments: [
+		{
+			user: {
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "User",
+				required: true,
+			},
+			text: {
+				type: String,
+				required: true,
+			},
+			replies: [
+				{
+					user: {
+						type: mongoose.Schema.Types.ObjectId,
+						ref: "User",
+						required: true,
+					},
+					text: {
+						type: String,
+						required: true,
+					},
+				},
+			],
+		},
+	],
 	picture: {
 		type: String,
 		default: "https://example.com/default-event-pic.png",
