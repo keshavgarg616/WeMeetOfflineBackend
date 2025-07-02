@@ -21,6 +21,8 @@ import {
 	deleteReply,
 	editComment,
 	editReply,
+	fetchEventsByPage,
+	searchEvents,
 } from "../controllers/eventController.js";
 import verifyToken from "../middleware.js";
 
@@ -55,5 +57,7 @@ eventRouter.post("/delete-comment", verifyToken, deleteComment);
 eventRouter.post("/delete-reply", verifyToken, deleteReply);
 eventRouter.post("/edit-comment", verifyToken, editComment);
 eventRouter.post("/edit-reply", verifyToken, editReply);
+eventRouter.post("/fetch-events-by-page", verifyToken, fetchEventsByPage);
+eventRouter.post("/search-events", verifyToken, searchEvents);
 
 export default eventRouter;

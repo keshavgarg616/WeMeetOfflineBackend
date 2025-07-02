@@ -48,10 +48,39 @@ export const addEvent = async (req, res) => {
 
 export const getEvents = async (req, res) => {
 	try {
-		const events = await Event.find({}, { attendeeIds: 0, address: 0 })
+		const events = await Event.find(
+			{},
+			{ attendeeIds: 0, address: 0, requestedAttendeeIds: 0 }
+		)
 			.populate("organizerId", { name: 1, pfp: 1, _id: 0 })
 			.sort({ beginsAt: 1 }); // Sort by beginning time
 		res.status(200).json(events);
+	} catch (error) {
+		console.error("Error fetching events:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const fetchEventsByPage = async (req, res) => {
+	// pages start at 0
+	const { page, limit } = req.body;
+	try {
+		const total = await Event.countDocuments();
+		const events = await Event.find(
+			{},
+			{ attendeeIds: 0, address: 0, requestedAttendeeIds: 0 }
+		)
+			.populate("organizerId", { name: 1, pfp: 1, _id: 0 })
+			.sort({ beginsAt: 1 })
+			.skip(page * limit)
+			.limit(limit);
+
+		const pages = total / limit + (total % limit ? 1 : 0);
+
+		res.status(200).json({
+			events,
+			pages,
+		});
 	} catch (error) {
 		console.error("Error fetching events:", error);
 		res.status(500).json({ error: "Internal server error" });
@@ -86,7 +115,7 @@ export const getEventByTitle = async (req, res) => {
 	try {
 		const event = await Event.findOne(
 			{ title },
-			{ attendeeIds: 0, address: 0 }
+			{ attendeeIds: 0, address: 0, requestedAttendeeIds: 0 }
 		).populate("organizerId", { name: 1, pfp: 1, _id: 0 });
 		if (!event) {
 			return res.status(401).json({ error: "Event not found" });
@@ -603,6 +632,69 @@ export const editReply = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("Error editing reply:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const searchEvents = async (req, res) => {
+	const { searchStr, page, limit } = req.body;
+	const searchTerm = searchStr.toString().trim();
+
+	try {
+		const results = await Event.aggregate([
+			{
+				$lookup: {
+					from: "users",
+					localField: "organizerId",
+					foreignField: "_id",
+					as: "organizerId",
+				},
+			},
+			{ $unwind: "$organizerId" },
+			{
+				$match: {
+					$or: [
+						{ title: { $regex: searchTerm, $options: "i" } },
+						{ tags: { $regex: searchTerm, $options: "i" } },
+						{
+							"organizerId.name": {
+								$regex: searchTerm,
+								$options: "i",
+							},
+						},
+					],
+				},
+			},
+			{
+				$facet: {
+					paginatedResults: [
+						{ $sort: { beginsAt: 1 } },
+						{ $skip: page * limit },
+						{ $limit: limit },
+						{
+							$project: {
+								title: 1,
+								beginsAt: 1,
+								isVirtual: 1,
+								tags: 1,
+								picture: 1,
+								"organizerId.name": 1,
+								"organizerId.pfp": 1,
+							},
+						},
+					],
+					totalCount: [{ $count: "count" }],
+				},
+			},
+		]);
+
+		const events = results[0].paginatedResults;
+		const total = results[0].totalCount[0]?.count || 0;
+		const pages = Math.ceil(total / limit);
+
+		res.status(200).json({ events, pages, total });
+	} catch (error) {
+		console.error("Error searching events:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
