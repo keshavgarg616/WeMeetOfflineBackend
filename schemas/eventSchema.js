@@ -77,7 +77,8 @@ const eventSchema = new mongoose.Schema({
 	],
 	picture: {
 		type: String,
-		default: "https://example.com/default-event-pic.png",
+		default:
+			"https://icrier.org/wp-content/uploads/2022/09/Event-Image-Not-Found.jpg",
 	},
 });
 

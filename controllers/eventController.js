@@ -22,6 +22,12 @@ export const addEvent = async (req, res) => {
 				.json({ error: "Event with this title already exists" });
 		}
 
+		if (new Date(beginsAt) >= new Date(endsAt)) {
+			return res
+				.status(400)
+				.json({ error: "Event end time must be after start time" });
+		}
+
 		const newEvent = new Event({
 			title,
 			description,
@@ -127,9 +133,17 @@ export const getEventByTitle = async (req, res) => {
 	}
 };
 export const updateEvent = async (req, res) => {
-	const title = req.body.title;
+	const {
+		title,
+		description,
+		beginsAt,
+		endsAt,
+		address,
+		isVirtual,
+		imgUrl,
+		tags,
+	} = req.body;
 	const userId = req.userId;
-	const updateData = req.body;
 
 	try {
 		const event = await Event.findOne({ title });
@@ -139,20 +153,22 @@ export const updateEvent = async (req, res) => {
 		if (event.organizerId.toString() !== userId) {
 			return res.status(403).json({ error: "Unauthorized action" });
 		}
-		// Validate beginsAt and endsAt
-		if (updateData.beginsAt && updateData.endsAt) {
-			const beginsAt = new Date(updateData.beginsAt);
-			const endsAt = new Date(updateData.endsAt);
-			if (beginsAt >= endsAt) {
-				return res
-					.status(400)
-					.json({ error: "Event end time must be after start time" });
-			}
+		if (beginsAt >= endsAt) {
+			return res
+				.status(400)
+				.json({ error: "Event end time must be after start time" });
 		}
-		// Update the event
 		const updatedEvent = await Event.findByIdAndUpdate(
 			event._id,
-			{ ...updateData, organizerId: userId },
+			{
+				description,
+				beginsAt,
+				endsAt,
+				address,
+				isVirtual,
+				picture: imgUrl,
+				tags,
+			},
 			{ new: true, runValidators: true }
 		);
 		res.status(200).json({

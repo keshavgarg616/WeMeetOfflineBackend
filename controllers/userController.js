@@ -5,20 +5,30 @@ import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import admin from "firebase-admin";
+import Event from "../schemas/eventSchema.js";
 
 dotenv.config();
+admin.initializeApp({
+	credential: admin.credential.cert({
+		projectId: process.env.FIREBASE_PROJECT_ID,
+		clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+		privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+	}),
+});
+
+const transporter = nodemailer.createTransport({
+	host: process.env.EMAIL_SMTP_HOST,
+	port: process.env.EMAIL_SMTP_PORT,
+	secure: false, // true for 465, false for other ports
+	auth: {
+		user: process.env.EMAIL_USER, // your email address
+		pass: process.env.EMAIL_PASS, // your email password
+	},
+});
 
 export const signUp = async (req, res) => {
 	const { name, email, password, imgUrl } = req.body;
-	const transporter = nodemailer.createTransport({
-		host: process.env.EMAIL_SMTP_HOST,
-		port: process.env.EMAIL_SMTP_PORT,
-		secure: false, // true for 465, false for other ports
-		auth: {
-			user: process.env.EMAIL_USER, // your email address
-			pass: process.env.EMAIL_PASS, // your email password
-		},
-	});
 
 	const authCode = getAuthCode(email);
 
@@ -89,6 +99,55 @@ export const login = async (req, res) => {
 	} catch (error) {
 		console.error("Login error:", error);
 		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const googleLogin = async (req, res) => {
+	const { idToken } = req.body;
+
+	try {
+		const decoded = await admin.auth().verifyIdToken(idToken);
+		const { email, name } = decoded;
+		if (decoded.email_verified) {
+			let user = await findByEmail(email);
+			if (!user) {
+				const randomPswd = randomBytes(16).toString("hex");
+				const newUser = new User({
+					name: name,
+					email: email,
+					authCode: getAuthCode(email),
+					isVerified: true,
+					pfp: decoded.picture,
+					password: randomPswd,
+				});
+				await newUser.save();
+				user = newUser;
+				await transporter.sendMail({
+					from: `"${process.env.EMAIL_NAME}" <${process.env.EMAIL_USER}>`, // sender address
+					to: email,
+					subject: "We Meet Offline Sign Up",
+					text: `Hi ${name}! You have signed up for We Meet Offline!`,
+					html: `<b><p>Hi ${name}!</p></b><p>You have signed up for We Meet Offline!</p>
+					<p>Your current password is: ${randomPswd}</p>
+					<p>Click on the link below to set a password:</p>
+					<p>
+						<a href="${process.env.FRONTEND_URL}/forgot-password">Set Password</a>
+					</p>`,
+				});
+			}
+			const token = jwt.sign(
+				{ userId: user._id },
+				process.env.JWT_SECRET,
+				{
+					expiresIn: "1h",
+				}
+			);
+			res.status(200).json({ token });
+		} else {
+			return res.status(401).json({ error: "Email not verified" });
+		}
+	} catch (err) {
+		res.status(401).json({ error: "Invalid token" });
 	}
 };
 
@@ -165,15 +224,6 @@ export const resetPassword = async (req, res) => {
 
 export const requestPasswordReset = async (req, res) => {
 	const { email } = req.body;
-	const transporter = nodemailer.createTransport({
-		host: process.env.EMAIL_SMTP_HOST,
-		port: process.env.EMAIL_SMTP_PORT,
-		secure: false, // true for 465, false for other ports
-		auth: {
-			user: process.env.EMAIL_USER, // your email address
-			pass: process.env.EMAIL_PASS, // your email password
-		},
-	});
 
 	try {
 		const user = await findByEmail(email);
@@ -206,22 +256,20 @@ export const requestPasswordReset = async (req, res) => {
 	}
 };
 
-export const setPfp = async (req, res) => {
-	const { pfp } = req.body;
+export const updateUserProfile = async (req, res) => {
+	const { name, pfp } = req.body;
 	const userId = req.userId;
-
 	try {
 		const user = await User.findById(userId);
 		if (!user) {
 			return res.status(404).json({ error: "User not found" });
 		}
+		user.name = name;
 		user.pfp = pfp;
 		await user.save();
-		res.status(200).json({
-			message: "Profile picture updated successfully",
-		});
+		res.status(200).json({ success: true });
 	} catch (error) {
-		console.error("Error updating profile picture:", error);
+		console.error("Error updating user profile:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
@@ -229,13 +277,39 @@ export const setPfp = async (req, res) => {
 export const getUserProfile = async (req, res) => {
 	const userId = req.userId;
 	try {
-		const user = await User.findById(userId).select("name pfp");
+		const user = await User.findById(userId).select("name pfp authCode");
 		if (!user) {
 			return res.status(404).json({ error: "User not found" });
 		}
+		const email = getEmailFromAuthCode(user.authCode);
+		const eventsRegistered = (await Event.find())
+			.filter((event) => event.attendeeIds.includes(userId))
+			.map((event) => ({
+				_id: event._id,
+				name: event.title,
+				picture: event.picture,
+			}));
+		const eventsCreated = (await Event.find())
+			.filter((event) => event.organizerId.equals(userId))
+			.map((event) => ({
+				_id: event._id,
+				name: event.title,
+				picture: event.picture,
+			}));
+		const eventsRequestedToJoin = (await Event.find())
+			.filter((event) => event.requestedAttendeeIds.includes(userId))
+			.map((event) => ({
+				_id: event._id,
+				name: event.title,
+				picture: event.picture,
+			}));
 		res.status(200).json({
 			name: user.name,
 			pfp: user.pfp,
+			email,
+			eventsCreated,
+			eventsRegistered,
+			eventsRequestedToJoin,
 		});
 	} catch (error) {
 		console.error("Error fetching user profile:", error);

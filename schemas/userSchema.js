@@ -44,7 +44,8 @@ const userSchema = new mongoose.Schema({
 	},
 	pfp: {
 		type: String,
-		default: "https://example.com/default-profile-pic.png",
+		default:
+			"https://icrier.org/wp-content/uploads/2022/09/Event-Image-Not-Found.jpg",
 	},
 });
 
