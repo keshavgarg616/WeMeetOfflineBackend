@@ -47,6 +47,18 @@ const userSchema = new mongoose.Schema({
 		default:
 			"https://icrier.org/wp-content/uploads/2022/09/Event-Image-Not-Found.jpg",
 	},
+	phone: {
+		type: String,
+		default: "xxxxxxxxxx",
+	},
+	isPhoneVerified: {
+		type: Boolean,
+		default: false,
+	},
+	phoneOTP: {
+		type: String,
+		default: "",
+	},
 });
 
 userSchema.pre("save", async function (next) {

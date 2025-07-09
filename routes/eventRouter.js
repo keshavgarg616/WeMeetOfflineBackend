@@ -2,17 +2,13 @@ import { Router } from "express";
 import {
 	addEvent,
 	deleteEvent,
-	getEvents,
 	updateEvent,
 	registerForEvent,
 	unregisterFromEvent,
 	getEventByTitle,
-	isRegisteredForEvent,
-	isOrganizerOfEvent,
 	getAddressAndAttendees,
 	approveAttendee,
 	removeAttendee,
-	hasRequestedToAttendEvent,
 	addComment,
 	addReply,
 	getComments,
@@ -21,31 +17,29 @@ import {
 	deleteReply,
 	editComment,
 	editReply,
-	fetchEventsByPage,
 	searchEvents,
+	getUserStatus,
 } from "../controllers/eventController.js";
-import verifyToken from "../middleware.js";
+import { checkIfPhoneVerified, verifyToken } from "../middleware.js";
 
 const eventRouter = Router();
 
 eventRouter.post("/add-event", verifyToken, addEvent);
-eventRouter.post("/get-events", verifyToken, getEvents);
 eventRouter.post("/delete-event", verifyToken, deleteEvent);
 eventRouter.post("/get-event-by-title", verifyToken, getEventByTitle);
 eventRouter.post("/update-event", verifyToken, updateEvent);
-eventRouter.post("/register-for-event", verifyToken, registerForEvent);
+eventRouter.post(
+	"/register-for-event",
+	verifyToken,
+	checkIfPhoneVerified,
+	registerForEvent
+);
 eventRouter.post("/unregister-from-event", verifyToken, unregisterFromEvent);
-eventRouter.post("/is-registered-for-event", verifyToken, isRegisteredForEvent);
-eventRouter.post("/is-organizer-of-event", verifyToken, isOrganizerOfEvent);
+eventRouter.post("/get-user-status", verifyToken, getUserStatus);
 eventRouter.post(
 	"/get-address-and-attendees",
 	verifyToken,
 	getAddressAndAttendees
-);
-eventRouter.post(
-	"/has-requested-to-attend",
-	verifyToken,
-	hasRequestedToAttendEvent
 );
 eventRouter.post("/approve-attendee", verifyToken, approveAttendee);
 eventRouter.post("/remove-attendee", verifyToken, removeAttendee);
@@ -57,7 +51,6 @@ eventRouter.post("/delete-comment", verifyToken, deleteComment);
 eventRouter.post("/delete-reply", verifyToken, deleteReply);
 eventRouter.post("/edit-comment", verifyToken, editComment);
 eventRouter.post("/edit-reply", verifyToken, editReply);
-eventRouter.post("/fetch-events-by-page", verifyToken, fetchEventsByPage);
 eventRouter.post("/search-events", verifyToken, searchEvents);
 
 export default eventRouter;

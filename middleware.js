@@ -1,9 +1,10 @@
 import configDotenv from "dotenv";
 import jwt from "jsonwebtoken";
+import User from "./schemas/userSchema.js";
 
 configDotenv.config();
 
-function verifyToken(req, res, next) {
+export function verifyToken(req, res, next) {
 	const token = req.header("Authorization");
 	if (!token) return res.status(401).json({ error: "Access denied" });
 	try {
@@ -15,4 +16,19 @@ function verifyToken(req, res, next) {
 	}
 }
 
-export default verifyToken;
+export function checkIfPhoneVerified(req, res, next) {
+	const userId = req.userId;
+	if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+	User.findById(userId)
+		.select("isPhoneVerified")
+		.then((user) => {
+			if (!user) return res.status(400).json({ error: "User not found" });
+			if (user.isPhoneVerified) {
+				next();
+			} else {
+				res.status(403).json({ error: "Phone number not verified" });
+			}
+		})
+		.catch((error) => res.status(500).json({ error: "Server error" }));
+}

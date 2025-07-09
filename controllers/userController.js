@@ -7,6 +7,7 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 import Event from "../schemas/eventSchema.js";
+import twilio from "twilio";
 
 dotenv.config();
 admin.initializeApp({
@@ -28,14 +29,14 @@ const transporter = nodemailer.createTransport({
 });
 
 export const signUp = async (req, res) => {
-	const { name, email, password, imgUrl } = req.body;
+	const { name, email, password, imgUrl, phone } = req.body;
 
 	const authCode = getAuthCode(email);
 
 	try {
 		const existingUser = await findByEmail(email);
 		if (existingUser) {
-			return res.status(409).json({ error: "User already exists" });
+			return res.status(400).json({ error: "User already exists" });
 		}
 
 		const newUser = new User({
@@ -45,6 +46,7 @@ export const signUp = async (req, res) => {
 			authCode,
 			pfp: imgUrl,
 			isVerified: false,
+			phone,
 		});
 		(async () => {
 			const info = await transporter.sendMail({
@@ -57,7 +59,7 @@ export const signUp = async (req, res) => {
 		})();
 		await newUser.save();
 
-		res.status(201).json({
+		res.status(200).json({
 			success: true,
 			message: "User created successfully",
 		});
@@ -94,7 +96,7 @@ export const login = async (req, res) => {
 				return res.status(401).json({ error: "Invalid password" });
 			}
 		} else {
-			return res.status(404).json({ error: "User not found" });
+			return res.status(400).json({ error: "User not found" });
 		}
 	} catch (error) {
 		console.error("Login error:", error);
@@ -144,7 +146,7 @@ export const googleLogin = async (req, res) => {
 			);
 			res.status(200).json({ token });
 		} else {
-			return res.status(401).json({ error: "Email not verified" });
+			return res.status(403).json({ error: "Email not verified" });
 		}
 	} catch (err) {
 		res.status(401).json({ error: "Invalid token" });
@@ -174,10 +176,10 @@ export const verifyEmailCode = async (req, res) => {
 					.status(200)
 					.json({ message: "Email verified successfully" });
 			} else {
-				return res.status(401).json({ error: "Invalid auth code" });
+				return res.status(400).json({ error: "Invalid auth code" });
 			}
 		} else {
-			return res.status(401).json({ error: "Invalid auth code" });
+			return res.status(400).json({ error: "Invalid auth code" });
 		}
 	} catch (error) {
 		res.status(500).json({ error: "Internal server error" });
@@ -197,7 +199,7 @@ export const resetPassword = async (req, res) => {
 		const user = await findByEmail(email);
 		if (user) {
 			if (Date.now() - user.authCodeCreatedAt > 1 * 60 * 1000) {
-				return res.status(400).json({
+				return res.status(401).json({
 					error: "Auth code expired",
 				});
 			}
@@ -211,10 +213,10 @@ export const resetPassword = async (req, res) => {
 					.status(200)
 					.json({ message: "Password Reset Successfully" });
 			} else {
-				return res.status(401).json({ error: "Invalid auth code" });
+				return res.status(400).json({ error: "Invalid auth code" });
 			}
 		} else {
-			return res.status(401).json({ error: "Invalid auth code" });
+			return res.status(400).json({ error: "Invalid auth code" });
 		}
 	} catch (error) {
 		res.status(500).json({ error: "Internal server error" });
@@ -228,7 +230,7 @@ export const requestPasswordReset = async (req, res) => {
 	try {
 		const user = await findByEmail(email);
 		if (!user) {
-			return res.status(404).json({ error: "Email not registered." });
+			return res.status(400).json({ error: "Email not registered." });
 		}
 		let authCode = user.authCode;
 		if (Date.now() - user.authCodeCreatedAt > 1 * 60 * 1000) {
@@ -262,7 +264,7 @@ export const updateUserProfile = async (req, res) => {
 	try {
 		const user = await User.findById(userId);
 		if (!user) {
-			return res.status(404).json({ error: "User not found" });
+			return res.status(400).json({ error: "User not found" });
 		}
 		user.name = name;
 		user.pfp = pfp;
@@ -277,9 +279,11 @@ export const updateUserProfile = async (req, res) => {
 export const getUserProfile = async (req, res) => {
 	const userId = req.userId;
 	try {
-		const user = await User.findById(userId).select("name pfp authCode");
+		const user = await User.findById(userId).select(
+			"name pfp phone authCode isPhoneVerified"
+		);
 		if (!user) {
-			return res.status(404).json({ error: "User not found" });
+			return res.status(400).json({ error: "User not found" });
 		}
 		const email = getEmailFromAuthCode(user.authCode);
 		const eventsRegistered = (await Event.find())
@@ -306,6 +310,8 @@ export const getUserProfile = async (req, res) => {
 		res.status(200).json({
 			name: user.name,
 			pfp: user.pfp,
+			phone: user.phone,
+			isPhoneVerified: user.isPhoneVerified,
 			email,
 			eventsCreated,
 			eventsRegistered,
@@ -313,6 +319,72 @@ export const getUserProfile = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("Error fetching user profile:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const requestOTP = async (req, res) => {
+	const userId = req.userId;
+
+	try {
+		const user = await User.findById(userId);
+		if (!user) {
+			return res.status(400).json({ error: "User not found" });
+		}
+		if (user.isPhoneVerified) {
+			return res.status(400).json({ error: "Phone already verified" });
+		}
+
+		const phone = user.phone;
+		const otp = Math.floor(Math.random() * 1000000);
+		user.phoneOTP = otp;
+		await user.save();
+
+		const client = twilio(
+			process.env.TWILIO_ACCOUNT_SID,
+			process.env.TWILIO_AUTH_TOKEN
+		);
+		await client.messages.create({
+			body: `Your OTP for We Meet Offline is ${otp}`,
+			from: process.env.TWILIO_PHONE_NUMBER,
+			to: phone,
+		});
+
+		res.status(200).json({
+			success: true,
+			message: "OTP sent successfully",
+		});
+	} catch (error) {
+		console.error("Error requesting OTP:", error);
+		res.status(500).json({ error: "Internal server error" });
+	}
+};
+
+export const verifyOTP = async (req, res) => {
+	const { otp } = req.body;
+	const userId = req.userId;
+
+	try {
+		const user = await User.findById(userId);
+		if (!user) {
+			return res.status(400).json({ error: "User not found" });
+		}
+		if (user.isPhoneVerified) {
+			return res.status(400).json({ error: "Phone already verified" });
+		}
+		if (user.phoneOTP === otp) {
+			user.isPhoneVerified = true;
+			user.phoneOTP = "";
+			await user.save();
+			res.status(200).json({
+				success: true,
+				message: "Phone verified successfully",
+			});
+		} else {
+			res.status(400).json({ error: "Invalid OTP" });
+		}
+	} catch (error) {
+		console.error("Error verifying OTP:", error);
 		res.status(500).json({ error: "Internal server error" });
 	}
 };
