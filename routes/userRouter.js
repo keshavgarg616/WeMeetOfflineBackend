@@ -7,9 +7,9 @@ import {
 	requestPasswordReset,
 	updateUserProfile,
 	getUserProfile,
-	googleLogin,
 	requestOTP,
 	verifyOTP,
+	firebaseLogin,
 } from "../controllers/userController.js";
 import { verifyToken } from "../middleware.js";
 const userRouter = Router();
@@ -23,7 +23,7 @@ userRouter.post("/update-user-profile", verifyToken, updateUserProfile);
 userRouter.post("/get-user-profile", verifyToken, getUserProfile);
 userRouter.post("/request-otp", verifyToken, requestOTP);
 userRouter.post("/verify-otp", verifyToken, verifyOTP);
-userRouter.post("/google-login", googleLogin);
+userRouter.post("/firebase-login", firebaseLogin);
 userRouter.get("/", (req, res) => {
 	res.status(200).json({
 		message: "Hi! This is the backend for We Meet Offline!",

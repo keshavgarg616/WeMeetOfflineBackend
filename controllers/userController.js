@@ -104,13 +104,13 @@ export const login = async (req, res) => {
 	}
 };
 
-export const googleLogin = async (req, res) => {
+export const firebaseLogin = async (req, res) => {
 	const { idToken } = req.body;
 
 	try {
 		const decoded = await admin.auth().verifyIdToken(idToken);
 		const { email, name } = decoded;
-		if (decoded.email_verified) {
+		if (decoded) {
 			let user = await findByEmail(email);
 			if (!user) {
 				const randomPswd = randomBytes(16).toString("hex");
@@ -136,6 +136,9 @@ export const googleLogin = async (req, res) => {
 						<a href="${process.env.FRONTEND_URL}/forgot-password">Set Password</a>
 					</p>`,
 				});
+			}
+			if (!user.isVerified) {
+				return res.status(403).json({ error: "Email not verified" });
 			}
 			const token = jwt.sign(
 				{ userId: user._id },
