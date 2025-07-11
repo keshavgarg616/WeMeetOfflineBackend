@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import userRouter from "./routes/userRouter.js";
 import eventRouter from "./routes/eventRouter.js";
 import expressUploader from "express-fileupload";
+import logRouter from "./routes/logRouter.js";
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ mongoose
 
 app.use("/", userRouter);
 app.use("/", eventRouter);
+app.use("/", logRouter);
 
 app.listen(port, () => {
 	console.log(`Server running at port ${port}`);
